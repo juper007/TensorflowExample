@@ -2,6 +2,8 @@ import tensorflow as tf
 import random
 from tensorflow.examples.tutorials.mnist import input_data
 import matplotlib.pyplot as plt
+import datetime
+
 tf.set_random_seed(777)
 
 mnist = input_data.read_data_sets("MNIST_DATA/", one_hot=True)
@@ -29,23 +31,24 @@ layar3 = tf.nn.dropout(layar3, keep_prob=keep_prob)
 
 W4 = tf.get_variable("W4", shape=[256, nb_classes], initializer=tf.contrib.layers.xavier_initializer())
 b4 = tf.Variable(tf.random_normal([nb_classes]), name='bais4')
-hypothesis = tf.nn.softmax(tf.matmul(layar3, W4) + b4)
+hypothesis = tf.matmul(layar3, W4) + b4
 
-cost = tf.reduce_mean(-tf.reduce_sum(Y * tf.log(hypothesis), axis=1))
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=hypothesis, labels=Y))
 
 cost_summ = tf.summary.scalar("cost", cost)
 summary = tf.summary.merge_all()
 
-optimizer = tf.train.AdamOptimizer(learning_rate=0.3).minimize(cost)
+optimizer = tf.train.AdamOptimizer(learning_rate=0.00015).minimize(cost)
 
 isCorrect = tf.equal(tf.argmax(hypothesis, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(isCorrect, tf.float32))
 
-training_epoch = 500
+training_epoch = 20
 batch_size = 100
 
 with tf.Session() as sess:
-    writer = tf.summary.FileWriter('./logs')
+    logdir = './logs/' + datetime.datetime.now().strftime('%Y%m%d%H%M')
+    writer = tf.summary.FileWriter(logdir)
     writer.add_graph(sess.graph)
     sess.run(tf.global_variables_initializer())
     for epoch in range(training_epoch):
@@ -55,7 +58,7 @@ with tf.Session() as sess:
         for i in range(total_batch):
             batch_xs, batch_ys = mnist.train.next_batch(batch_size)
             s, _ = sess.run([summary, optimizer], feed_dict={X: batch_xs, Y: batch_ys, keep_prob: 0.7})
-            writer.add_summary(s)
+            writer.add_summary(s, global_step=i + (epoch*total_batch))
 
         print('%04d' % (epoch + 1), ",", accuracy.eval(session=sess, feed_dict={X: mnist.test.images, Y: mnist.test.labels, keep_prob: 1.0}))
 
