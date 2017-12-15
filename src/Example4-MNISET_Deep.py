@@ -38,7 +38,7 @@ cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=hypothesis,
 cost_summ = tf.summary.scalar("cost", cost)
 summary = tf.summary.merge_all()
 
-optimizer = tf.train.AdamOptimizer(learning_rate=0.00015).minimize(cost)
+optimizer = tf.train.AdamOptimizer(learning_rate=0.0001).minimize(cost)
 
 isCorrect = tf.equal(tf.argmax(hypothesis, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(isCorrect, tf.float32))

@@ -55,7 +55,7 @@ accuracy = tf.reduce_mean(tf.cast(isCorrect, tf.float32))
 training_epoch = 20
 batch_size = 100
 
-with tf.Session() as sess:
+with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
     logdir = './logs/CNN_' + datetime.now().strftime('%Y%m%d%H%M')
     writer = tf.summary.FileWriter(logdir)
     writer.add_graph(sess.graph)

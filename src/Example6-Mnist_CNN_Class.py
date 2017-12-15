@@ -9,7 +9,6 @@ learning_rate = 0.001
 training_epoch = 20
 batch_size = 100
 
-
 class Model:
     def __init__(self, sess, name):
         self.training = tf.placeholder(tf.bool)
@@ -67,7 +66,7 @@ class Model:
                              feed_dict={self.X: x_test, self.Y: y_test, self.keep_prob: keep_prob, self.training: training})
 
     def train(self, x_data, y_data, keep_prob=0.5, training=True):
-        return self.sess.run([self.cost, self.summary, self.optimizer],
+        return self.sess.run([self.summary, self.optimizer],
                              feed_dict={self.X: x_data, self.Y: y_data, self.keep_prob: keep_prob, self.training: training})
 
 
@@ -88,8 +87,7 @@ for epoch in range(training_epoch):
 
     for i in range(total_batch):
         batch_xs, batch_ys = mnist.train.next_batch(batch_size)
-        c, s, _ = m1.train(batch_xs, batch_ys)
-        avg_cost += c / total_batch
+        s, _ = m1.train(batch_xs, batch_ys)
         writer.add_summary(s, global_step=i + (epoch*total_batch))
 
 print('Accuracy:', m1.get_accuracy(mnist.test.images, mnist.test.labels))
