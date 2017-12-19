@@ -1,5 +1,7 @@
 src/logs
 src/GAN_log
+src/GAN_Model
+src/GAN_Final
 .idea/
 
 # Byte-compiled / optimized / DLL files
