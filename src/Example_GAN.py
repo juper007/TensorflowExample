@@ -9,46 +9,12 @@ tf.set_random_seed(777)
 mnist = input_data.read_data_sets("MNIST_DATA/")
 
 
-def batch_norm(x, n_out, phase_train):
-    """
-    Batch normalization on convolutional maps.
-    Ref.: http://stackoverflow.com/questions/33949786/how-could-i-use-batch-normalization-in-tensorflow
-    Args:
-        x:           Tensor, 4D BHWD input maps
-        n_out:       integer, depth of input maps
-        phase_train: boolean tf.Varialbe, true indicates training phase
-        scope:       string, variable scope
-    Return:
-        normed:      batch-normalized maps
-    """
-    with tf.variable_scope('bn'):
-        beta = tf.Variable(tf.constant(0.0, shape=[n_out]),
-                           name='beta', trainable=True)
-        gamma = tf.Variable(tf.constant(1.0, shape=[n_out]),
-                            name='gamma', trainable=True)
-        batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2], name='moments')
-        ema = tf.train.ExponentialMovingAverage(decay=0.5)
-
-        def mean_var_with_update():
-            ema_apply_op = ema.apply([batch_mean, batch_var])
-            with tf.control_dependencies([ema_apply_op]):
-                return tf.identity(batch_mean), tf.identity(batch_var)
-
-        mean, var = tf.cond(phase_train,
-                            mean_var_with_update,
-                            lambda: (ema.average(batch_mean), ema.average(batch_var)))
-        normed = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-3)
-    return normed
-
-
 def discriminator(images, reuse=False):
     with tf.variable_scope("Generator"):
-        resize_images = tf.image.resize_images(images, [64, 64])
-
         conv1 = tf.layers.conv2d(name='d_conv1',
-                                 inputs=resize_images,
-                                 filters=128,
-                                 kernel_size=[3, 3],
+                                 inputs=images,
+                                 filters=64,
+                                 kernel_size=[5, 5],
                                  strides=[1, 1],
                                  padding="SAME",
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -65,7 +31,7 @@ def discriminator(images, reuse=False):
         conv2 = tf.layers.conv2d(name='d_conv2',
                                  inputs=pool1,
                                  filters=256,
-                                 kernel_size=[3, 3],
+                                 kernel_size=[5, 5],
                                  strides=[1, 1],
                                  padding="SAME",
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -120,7 +86,7 @@ def generator(z, batch_size, z_dim, reuse=False):
         conv2 = tf.layers.conv2d_transpose(name='g_conv2',
                                            inputs=dense1,
                                            filters=512,
-                                           kernel_size=[3, 3],
+                                           kernel_size=[5, 5],
                                            strides=[2, 2],
                                            padding='SAME',
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -136,7 +102,7 @@ def generator(z, batch_size, z_dim, reuse=False):
         conv3 = tf.layers.conv2d_transpose(name='g_conv3',
                                            inputs=conv2,
                                            filters=256,
-                                           kernel_size=[3, 3],
+                                           kernel_size=[5, 5],
                                            strides=[2, 2],
                                            padding='SAME',
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -151,8 +117,8 @@ def generator(z, batch_size, z_dim, reuse=False):
 
         conv4 = tf.layers.conv2d_transpose(name='g_conv4',
                                            inputs=conv3,
-                                           filters=128,
-                                           kernel_size=[3, 3],
+                                           filters=1,
+                                           kernel_size=[5, 5],
                                            strides=[2, 2],
                                            padding='SAME',
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -168,7 +134,7 @@ def generator(z, batch_size, z_dim, reuse=False):
         conv5 = tf.layers.conv2d_transpose(name='g_conv5',
                                            inputs=conv4,
                                            filters=1,
-                                           kernel_size=[3, 3],
+                                           kernel_size=[5, 5],
                                            strides=[2, 2],
                                            padding='SAME',
                                            activation=tf.nn.tanh,
@@ -259,4 +225,4 @@ with tf.Session() as sess:
             plt.imshow(images[0].reshape([28, 28]), cmap='Greys')
             # plt.show()
 
-    saver.save(sess, "GAN_Model/GAM_Model_" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".ckpt")
+    saver.save(sess, "GAN_Model/GAM_Model" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".ckpt")
