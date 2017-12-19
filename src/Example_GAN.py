@@ -4,42 +4,93 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tensorflow.examples.tutorials.mnist import input_data
-mnist = input_data.read_data_sets("MNIST_date/")
+
+tf.set_random_seed(777)
+mnist = input_data.read_data_sets("MNIST_DATA/")
+
+
+def batch_norm(x, n_out, phase_train):
+    """
+    Batch normalization on convolutional maps.
+    Ref.: http://stackoverflow.com/questions/33949786/how-could-i-use-batch-normalization-in-tensorflow
+    Args:
+        x:           Tensor, 4D BHWD input maps
+        n_out:       integer, depth of input maps
+        phase_train: boolean tf.Varialbe, true indicates training phase
+        scope:       string, variable scope
+    Return:
+        normed:      batch-normalized maps
+    """
+    with tf.variable_scope('bn'):
+        beta = tf.Variable(tf.constant(0.0, shape=[n_out]),
+                           name='beta', trainable=True)
+        gamma = tf.Variable(tf.constant(1.0, shape=[n_out]),
+                            name='gamma', trainable=True)
+        batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2], name='moments')
+        ema = tf.train.ExponentialMovingAverage(decay=0.5)
+
+        def mean_var_with_update():
+            ema_apply_op = ema.apply([batch_mean, batch_var])
+            with tf.control_dependencies([ema_apply_op]):
+                return tf.identity(batch_mean), tf.identity(batch_var)
+
+        mean, var = tf.cond(phase_train,
+                            mean_var_with_update,
+                            lambda: (ema.average(batch_mean), ema.average(batch_var)))
+        normed = tf.nn.batch_normalization(x, mean, var, beta, gamma, 1e-3)
+    return normed
 
 
 def discriminator(images, reuse=False):
     with tf.variable_scope("Generator"):
+        resize_images = tf.image.resize_images(images, [64, 64])
+
         conv1 = tf.layers.conv2d(name='d_conv1',
-                                 inputs=images,
-                                 filters=32,
-                                 kernel_size=[5, 5],
+                                 inputs=resize_images,
+                                 filters=128,
+                                 kernel_size=[3, 3],
                                  strides=[1, 1],
                                  padding="SAME",
-                                 activation=tf.nn.relu,
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  bias_initializer=tf.constant_initializer(0),
                                  reuse=reuse)
-        pool1 = tf.layers.max_pooling2d(conv1, [2, 2], 1, "SAME")
+        conv1 = tf.contrib.layers.batch_norm(conv1,
+                                             center=True,
+                                             scale=True,
+                                             reuse=reuse,
+                                             scope='d_conv1_bn')
+        conv1 = tf.nn.relu(conv1)
+        pool1 = tf.layers.average_pooling2d(conv1, [2, 2], 1, "SAME")
 
         conv2 = tf.layers.conv2d(name='d_conv2',
                                  inputs=pool1,
-                                 filters=64,
-                                 kernel_size=[5, 5],
+                                 filters=256,
+                                 kernel_size=[3, 3],
                                  strides=[1, 1],
                                  padding="SAME",
-                                 activation=tf.nn.relu,
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  bias_initializer=tf.constant_initializer(0),
                                  reuse=reuse)
-        pool2 = tf.layers.max_pooling2d(conv2, [2, 2], 1, "SAME")
+        conv2 = tf.contrib.layers.batch_norm(conv2,
+                                             center=True,
+                                             scale=True,
+                                             reuse=reuse,
+                                             scope='d_conv2_bn')
+        conv2 = tf.nn.relu(conv2)
+        pool2 = tf.layers.average_pooling2d(conv2, [2, 2], 1, "SAME")
 
         dense3 = tf.layers.dense(name='d_dense3',
                                  inputs=pool2,
-                                 units=1024,
-                                 activation=tf.nn.relu,
+                                 units=512,
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  bias_initializer=tf.constant_initializer(0),
                                  reuse=reuse)
+        dense3 = tf.contrib.layers.batch_norm(dense3,
+                                              center=True,
+                                              scale=True,
+                                              reuse=reuse,
+                                              scope='d_dense3_bn')
+        dense3 = tf.nn.relu(dense3)
 
         dense4 = tf.layers.dense(name='d_dense4',
                                  inputs=dense3,
@@ -54,48 +105,80 @@ def generator(z, batch_size, z_dim, reuse=False):
     with tf.variable_scope("Generator"):
         dense1 = tf.layers.dense(name='g_dense1',
                                  inputs=z,
-                                 units=56 * 56,
-                                 activation=tf.nn.relu,
+                                 units=4 * 4 * 1024,
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  bias_initializer=tf.constant_initializer(0),
                                  reuse=reuse)
-        dense1 = tf.reshape(dense1, [-1, 56, 56, 1])
+        dense1 = tf.reshape(dense1, [-1, 4, 4, 1024])
+        dense1 = tf.contrib.layers.batch_norm(dense1,
+                                              center=True,
+                                              scale=True,
+                                              reuse=reuse,
+                                              scope='g_dense1_bn')
+        dense1 = tf.nn.relu(dense1)
 
-        conv2 = tf.layers.conv2d(name='g_conv2',
-                                 inputs=dense1,
-                                 filters=z_dim/2,
-                                 kernel_size=[3, 3],
-                                 strides=[2, 2],
-                                 padding="SAME",
-                                 activation=tf.nn.relu,
-                                 kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                 bias_initializer=tf.constant_initializer(0),
-                                 reuse=reuse)
-        conv2 = tf.image.resize_images(conv2, [56, 56])
+        conv2 = tf.layers.conv2d_transpose(name='g_conv2',
+                                           inputs=dense1,
+                                           filters=512,
+                                           kernel_size=[3, 3],
+                                           strides=[2, 2],
+                                           padding='SAME',
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                           bias_initializer=tf.constant_initializer(0),
+                                           reuse=reuse)
+        conv2 = tf.contrib.layers.batch_norm(conv2,
+                                             center=True,
+                                             scale=True,
+                                             reuse=reuse,
+                                             scope='g_conv2_bn')
+        conv2 = tf.nn.relu(conv2)
 
-        conv3 = tf.layers.conv2d(name='g_conv3',
-                                 inputs=conv2,
-                                 filters=z_dim/4,
-                                 kernel_size=[3, 3],
-                                 strides=[2, 2],
-                                 padding="SAME",
-                                 activation=tf.nn.relu,
-                                 kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                 bias_initializer=tf.constant_initializer(0),
-                                 reuse=reuse)
-        conv3 = tf.image.resize_images(conv3, [56, 56])
+        conv3 = tf.layers.conv2d_transpose(name='g_conv3',
+                                           inputs=conv2,
+                                           filters=256,
+                                           kernel_size=[3, 3],
+                                           strides=[2, 2],
+                                           padding='SAME',
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                           bias_initializer=tf.constant_initializer(0),
+                                           reuse=reuse)
+        conv3 = tf.contrib.layers.batch_norm(conv3,
+                                             center=True,
+                                             scale=True,
+                                             reuse=reuse,
+                                             scope='g_conv3_bn')
+        conv3 = tf.nn.relu(conv3)
 
-        conv4 = tf.layers.conv2d(name='g_conv4',
-                                 inputs=conv3,
-                                 filters=1,
-                                 kernel_size=[1, 1],
-                                 strides=[2, 2],
-                                 padding="SAME",
-                                 activation=tf.nn.sigmoid,
-                                 kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
-                                 bias_initializer=tf.constant_initializer(0),
-                                 reuse=reuse)
-    return conv4
+        conv4 = tf.layers.conv2d_transpose(name='g_conv4',
+                                           inputs=conv3,
+                                           filters=128,
+                                           kernel_size=[3, 3],
+                                           strides=[2, 2],
+                                           padding='SAME',
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                           bias_initializer=tf.constant_initializer(0),
+                                           reuse=reuse)
+        conv4 = tf.contrib.layers.batch_norm(conv4,
+                                             center=True,
+                                             scale=True,
+                                             reuse=reuse,
+                                             scope='g_conv4_bn')
+        conv4 = tf.nn.relu(conv4)
+
+        conv5 = tf.layers.conv2d_transpose(name='g_conv5',
+                                           inputs=conv4,
+                                           filters=1,
+                                           kernel_size=[3, 3],
+                                           strides=[2, 2],
+                                           padding='SAME',
+                                           activation=tf.nn.tanh,
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
+                                           bias_initializer=tf.constant_initializer(0),
+                                           reuse=reuse)
+
+        conv5 = tf.image.resize_images(conv5, [28, 28])
+
+    return conv5
 
 
 z_dimensions = 100
@@ -109,7 +192,6 @@ z_batch = np.random.normal(0, 1, size=[batch_size, z_dimensions])
 Gz = generator(z_placeholder, batch_size, z_dimensions)
 Dx = discriminator(x_placeholder)
 Dg = discriminator(Gz, True)
-
 
 d_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Dx, labels=tf.ones_like(Dx)))
 d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=Dg, labels=tf.zeros_like(Dg)))
@@ -125,11 +207,9 @@ d_trainer_real = tf.train.AdamOptimizer(learning_rate=0.0003).minimize(d_loss_re
 
 g_trainer = tf.train.AdamOptimizer(learning_rate=0.0001).minimize(g_loss, var_list=g_vars)
 
-
 tf.summary.scalar('Generator_loss', g_loss)
 tf.summary.scalar('Discriminator_loss_fake', d_loss_fake)
 tf.summary.scalar('Discriminator_loss_real', d_loss_real)
-
 
 # with tf.Session() as sess:
 #     sess.run(tf.global_variables_initializer())
@@ -138,6 +218,7 @@ tf.summary.scalar('Discriminator_loss_real', d_loss_real)
 #     plt.imshow(generated_image, cmap='Greys')
 #     plt.show()
 
+saver = tf.train.Saver()
 
 with tf.Session() as sess:
     images_for_tensorboard = generator(z_placeholder, batch_size, z_dimensions, True)
@@ -148,13 +229,13 @@ with tf.Session() as sess:
 
     sess.run(tf.global_variables_initializer())
 
-    for i in range(300):
+    for i in range(500):
         z_batch = np.random.normal(0, 1, size=[batch_size, z_dimensions])
         real_image = mnist.train.next_batch(batch_size)[0].reshape([batch_size, 28, 28, 1])
         _, _, dLossReal, dLossFake = sess.run([d_trainer_real, d_trainer_fake, d_loss_real, d_loss_fake],
                                               feed_dict={x_placeholder: real_image, z_placeholder: z_batch})
-
-        print("dLossReal", dLossReal, "dLossFake", dLossFake)
+        if i % 100 == 0:
+            print("dLossReal", dLossReal, "dLossFake", dLossFake)
 
     for i in range(100000):
         z_batch = np.random.normal(0, 1, size=[batch_size, z_dimensions])
@@ -178,27 +259,4 @@ with tf.Session() as sess:
             plt.imshow(images[0].reshape([28, 28]), cmap='Greys')
             # plt.show()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    saver.save(sess, "GAN_Model/GAM_Model_" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ".ckpt")
